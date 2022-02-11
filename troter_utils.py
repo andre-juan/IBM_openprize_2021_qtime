@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 plt.rcParams.update({'font.size': 16})  # enlarge matplotlib fonts
 
@@ -21,6 +22,12 @@ from qiskit.quantum_info import state_fidelity
 
 import time
 
+from qiskit.algorithms.optimizers import GradientDescent, SPSA, SciPyOptimizer
+
+# reproducibility
+import qiskit
+qiskit.utils.algorithm_globals.random_seed = 42
+
 #################################################################
 # ============================================================= #
 #################################################################
@@ -42,22 +49,20 @@ def show_figure(fig):
 # ============================================================= #
 #################################################################
 
-def show_decompose(qc, n):
+def show_decompose(qc, n, show_original=False):
     
-    if n <= 0:
+    if n <= 0 or show_original:
         
         show_figure(qc.draw("mpl"))
         print("#"*80)
-        
-    else:
-        
-        for _ in range(n):
+           
+    for _ in range(n):
 
-            qc = qc.decompose()
+        qc = qc.decompose()
 
-            show_figure(qc.draw("mpl"))
-            print("#"*80)
-            
+        show_figure(qc.draw("mpl"))
+        print("#"*80)
+
 #################################################################
 # ============================================================= #
 #################################################################
@@ -496,6 +501,515 @@ def plot_simulation_H_all_t(ts, probs, fidelity_pi, plot_theoretical=True):
     
     plt.show()
     
+#################################################################
+# ============================================================= #
+#################################################################
+
+def full_trotter_circ_no_bind(order, trotter_steps=4, uniform_times=True):
+    '''
+    this is basically the same as `full_trotter_circ`, but without
+    the bind_parameters. That is, the circuit will be returned without the parameters set
+    plus, measurement of the 3 determined qubits is added.
+    '''
+
+    qr = QuantumRegister(7)
+    cr = ClassicalRegister(3)
+    
+    qc = QuantumCircuit(qr, cr)
+
+    qc.x([3,5])  
+    
+    if uniform_times:
+
+        Trot_gate = trotter_step(order, Parameter('t'))
+
+        for _ in range(trotter_steps):
+
+            qc.append(Trot_gate, [qr[1], qr[3], qr[5]])
+            
+    else:
+                             
+        for i in range(trotter_steps):
+            
+            Trot_gate = trotter_step(order, Parameter(f't{i}'))
+                                     
+            qc.append(Trot_gate, [qr[1], qr[3], qr[5]])   
+
+    # measurement -- very important for the optmization! 
+    qc.measure([1, 3, 5], [0, 1, 2])     
+
+    return qc
+
+#################################################################
+# ============================================================= #
+#################################################################
+
+def plot_loss(losses_dict):
+    
+    plt.figure(figsize=(12, 6))
+    
+    plt.title("Optimization process - with SLSQP")
+    
+    for eps, losses in losses_dict.items():
+        
+        plt.plot(losses, label=f'eps={eps}')
+
+    plt.axhline(y=-1, color='red', ls='--', label='Global minimum')
+    
+    plt.ylabel('loss')
+    plt.xlabel('iterations')
+    
+    plt.legend(prop={'size': 12}, loc='center left', bbox_to_anchor=(1, 0.5))
+    
+    plt.show()
+
+# # i don't use this anymore, since now there's only one optimizer (constrained)
+
+# def plot_loss(gd_loss=None, spsa_loss=None, autospsa_loss=None):
+    
+#     plt.figure(figsize=(12, 6))
+    
+#     plt.title("Optimization process - comparing optimizers")
+    
+#     if gd_loss:
+#         plt.plot(gd_loss, color='blue', label='Gradient descent')
+        
+#     if spsa_loss:
+#         plt.plot(spsa_loss, color='green', label='SPSA')
+    
+#     if autospsa_loss:
+#         plt.plot(autospsa_loss, color='red', label='Auto SPSA')
+    
+#     plt.axhline(-1, c='tab:red', ls='--', label='target')
+    
+#     plt.ylabel('loss')
+#     plt.xlabel('iterations')
+    
+#     plt.legend()
+    
+#     plt.show()
+    
+#################################################################
+# ============================================================= #
+#################################################################
+
+def plot_param_evolution(params, opt_name):
+    '''
+    params: list of params at each step, only for the best opt
+    opt_name: name of the best opt
+    '''
+
+    params = np.array(params)
+
+    plt.figure(figsize=(12, 6))
+    
+    plt.title(f"Evolution of parameters - {opt_name} optimizer")
+
+    for i in range(params.shape[1]):
+
+        plt.plot(params[:, i], label=f't{i+1}')
+
+    plt.ylabel('parameter value')
+    plt.xlabel('iterations')
+
+    plt.legend(prop={'size': 12}, loc='center left', bbox_to_anchor=(1, 0.5))
+
+    plt.show()
+    
+#################################################################
+# ============================================================= #
+#################################################################
+
+def optimize_params_constrained(qc, backend, target_time=np.pi,
+                                maxiter=200,
+                                eps=0.1, tol=1e-10, ftol=1e-10):
+    '''
+    - eps (float): single epsilon, or list of epsilons (step size used for numerical approximation of the Jacobian)
+    '''
+    
+    # ==================================================
+    
+    # loss function, it's just the fidelity
+    def loss_trotter(parameters, qc=qc, backend=backend):
+    
+        params_dict = {param: time for param, time in zip(qc.parameters, parameters)}
+
+        qc = qc.bind_parameters(params_dict)
+
+        counts = execute(qc,
+                         backend, 
+                         shots=1e5, 
+                         seed_simulator=42).result().get_counts()
+
+        fid = counts["110"]/sum(counts.values())
+
+        # because the optmizer will minimize, but we wanto to
+        # maximize the fidelity.
+        return -fid
+    
+    # ==================================================
+    
+    # random params to start with
+    np.random.seed(42)
+    trotter_init_params = np.random.random(qc.num_parameters)
+    
+    # but we'll normalize the params to sum to target_time
+    trotter_init_params = trotter_init_params*(target_time/trotter_init_params.sum())
+
+    
+    # it it's not a list, put single value within
+    # a list, so that the loop below works!
+    if isinstance(eps, list):
+        eps_list = eps
+    else:
+        eps_list = [eps]
+        
+    # ==================================================
+    
+    # to save optimization results
+    results = {"optimizer" : [],
+               "eps" : [],
+               "final_params" : [],
+               "final_loss": []}
+    
+    # ==================================================
+    
+    print("\nStarting optimization!\n")
+        
+    # these are important for the plots
+    losses_dict = {}
+    params_dict = {}
+    
+    for eps_ in eps_list:
+
+        start = time.time()
+
+        print()
+        print("="*50)
+        print(f"Optimizer: SLSQP\neps = {eps_}")
+        print("="*50)
+        print()
+
+        slsqp_loss = []
+        slsqp_params = []
+
+        def slsqp_callback(xk):
+
+            # callback doesn't give the values of loss directly, only the current parameters
+            # so I must calculate the loss again.
+            loss = loss_trotter(parameters=xk, qc=qc, backend=backend)
+
+            slsqp_loss.append(loss)
+            slsqp_params.append(xk)
+
+            n_iters = len(slsqp_params)
+
+            print(f'Iter {n_iters} done!')
+            print(f'Loss value: {loss}')
+            with np.printoptions(precision=3, suppress=False):
+                print(f'Current parameters: {xk} (sum to {xk.sum():.2f})\n')
+
+        # all parameters must be positive
+        bounds = [(0, target_time)]*qc.num_parameters
+
+        # parameters must sum to target_time!
+        constraints = {'type': 'eq', 'fun': lambda x: target_time - sum(x)}
+
+        # options for the opt solver
+        options = {"maxiter" : maxiter,
+                   "verbose" : 3,
+                   "disp" : True,
+                   "eps" : eps_,
+                   "tol" : tol,
+                   "ftol" : ftol}
+
+        results_slsqp = SciPyOptimizer(method="SLSQP",
+                                       options=options,
+                                       constraints=constraints,
+                                       callback=slsqp_callback).optimize(num_vars=qc.num_parameters, 
+                                                                         objective_function=loss_trotter, 
+                                                                         variable_bounds=bounds,
+                                                                         initial_point=trotter_init_params)
+
+        results["optimizer"].append("slsqp")
+        results["eps"].append(eps_)
+        results["final_params"].append(results_slsqp[0])
+        results["final_loss"].append(results_slsqp[1])
+        
+        losses_dict[eps_] = slsqp_loss
+        params_dict[eps_] = slsqp_params
+
+        stop = time.time()
+        duration = time.strftime("%H:%M:%S", time.gmtime(stop-start))
+        print(f"\nTotal time of optimization: {duration}")    
+
+    # ==================================================
+    # plot loss function evolution over optimization
+
+    plot_loss(losses_dict)
+    
+    # ==================================================
+    
+    df_results = pd.DataFrame(results).sort_values("final_loss")
+    
+    print("\nOptimization results:\n")
+    display(df_results)
+    
+    best_params = df_results.iloc[0]["final_params"]
+    best_eps = df_results.iloc[0]["eps"]
+    
+    # ==================================================
+    # plot parameters evolution, only for the best params
+        
+    plot_param_evolution(params=params_dict[best_eps], 
+                         opt_name=f'SLSQP with eps={best_eps}')
+    
+    # ==================================================
+    
+    # sum to 1 (proportions)
+    best_params_props = best_params/best_params.sum()
+    
+    with np.printoptions(precision=3, suppress=False):
+        print(f"Best parameters (sum to {best_params.sum():.2f}):\t{best_params}")
+        print(f"Best parameters (sum to 1):\t{best_params_props}")
+    
+    # ==================================================
+    
+    params_dict = {param: time for param, time in zip(qc.parameters, best_params)}
+                                     
+    qc = qc.bind_parameters(params_dict)
+    
+    # ==================================================
+    
+    return qc, best_params
+
+
+# # i don't use this below anymore, because it doesn't allow to constrain the parameters.
+# # but i'll leave here for reference!
+
+# def optimize_params(qc, backend, target_time=np.pi,
+#                     maxiter=200,
+#                     gd=True, lr_gd=0.01,
+#                     spsa=True, lr_spsa=0.01, perturb=0.01,
+#                     autospsa=True):
+    
+#     # ==================================================
+    
+#     # loss function, it's just the fidelity
+#     def loss_trotter(parameters, qc=qc, backend=backend):
+    
+#         params_dict = {param: time for param, time in zip(qc.parameters, parameters)}
+
+#         qc = qc.bind_parameters(params_dict)
+
+#         counts = execute(qc,
+#                          backend, 
+#                          shots=1e5, 
+#                          seed_simulator=42).result().get_counts()
+
+#         fid = counts["110"]/sum(counts.values())
+
+#         # because the optmizer will minimize, but we wanto to
+#         # maximize the fidelity.
+#         return -fid
+    
+#     # ==================================================
+    
+#     # random params to start with
+#     np.random.seed(42)
+#     trotter_init_params = np.random.random(qc.num_parameters)
+    
+#     # but we'll normalize the params to sum to target_time
+#     trotter_init_params = trotter_init_params*(target_time/trotter_init_params.sum())
+
+#     # ==================================================
+    
+#     # to save optimization results
+    
+#     results = {"optimizer" : [],
+#                "final_params" : [],
+#                "final_loss": []}
+    
+#     # ==================================================
+    
+#     print("\nStarting optimization!\n")
+    
+#     if gd:
+        
+#         start = time.time()
+        
+#         print()
+#         print("="*50)
+#         print("Optimizer: gradient descent")
+#         print("="*50)
+#         print()
+        
+#         gd_loss = []
+#         gd_params = []
+
+#         def gd_callback(nfev, x, fx, stepsize):
+
+#             gd_loss.append(fx)
+#             gd_params.append(x)
+            
+#             n_iters = len(gd_loss)
+            
+#             if (n_iters == 1) or (n_iters % 10 == 0):
+                
+#                 print(f'Iter {n_iters} done!')
+#                 print(f'Loss value: {fx}')
+#                 print(f'Current parameters: {x}\n')
+
+#         results_gd = GradientDescent(maxiter=maxiter,
+#                                      learning_rate=lr_gd, 
+#                                      callback=gd_callback).optimize(num_vars=trotter_init_params.size, 
+#                                                                     objective_function=loss_trotter, 
+#                                                                     initial_point=trotter_init_params)
+        
+#         results["optimizer"].append("gd")
+#         results["final_params"].append(results_gd[0])
+#         results["final_loss"].append(results_gd[1])
+        
+#         stop = time.time()
+#         duration = time.strftime("%H:%M:%S", time.gmtime(stop-start))
+#         print(f"\nTotal time of optimization: {duration}")
+    
+#     # ==================================================
+    
+#     if spsa:
+        
+#         start = time.time()
+        
+#         print()
+#         print("="*50)
+#         print("Optimizer: SPSA")
+#         print("="*50)
+#         print()
+        
+#         spsa_loss = []
+#         spsa_params = []
+        
+#         def spsa_callback(nfev, x, fx, stepsize, accepted):
+
+#             spsa_loss.append(fx)
+#             spsa_params.append(x)
+            
+#             n_iters = len(spsa_loss)
+            
+#             if (n_iters == 1) or (n_iters % 10 == 0):
+                
+#                 print(f'Iter {n_iters} done!')
+#                 print(f'Loss value: {fx}')
+#                 print(f'Current parameters: {x}\n')
+
+#         results_spsa = SPSA(maxiter=maxiter,
+#                             learning_rate=lr_spsa, 
+#                             perturbation=perturb, 
+#                             callback=spsa_callback).optimize(num_vars=trotter_init_params.size, 
+#                                                              objective_function=loss_trotter, 
+#                                                              initial_point=trotter_init_params)
+    
+#         results["optimizer"].append("spsa")
+#         results["final_params"].append(results_spsa[0])
+#         results["final_loss"].append(results_spsa[1])
+        
+#         stop = time.time()
+#         duration = time.strftime("%H:%M:%S", time.gmtime(stop-start))
+#         print(f"\nTotal time of optimization: {duration}") 
+        
+#     # ==================================================
+    
+#     if autospsa:
+        
+#         start = time.time()
+        
+#         print()
+#         print("="*50)
+#         print("Optimizer: auto SPSA")
+#         print("="*50)
+#         print()
+        
+#         autospsa_loss = []
+#         autospsa_params = []
+        
+#         def autospsa_callback(nfev, x, fx, stepsize, accepted):
+
+#             autospsa_loss.append(fx)
+#             autospsa_params.append(x)
+            
+#             n_iters = len(autospsa_loss)
+            
+#             if (n_iters == 1) or (n_iters % 10 == 0):
+                
+#                 print(f'Iter {n_iters} done!')
+#                 print(f'Loss value: {fx}')
+#                 print(f'Current parameters: {x}\n')
+
+#         results_autospsa = SPSA(maxiter=maxiter, 
+#                                 learning_rate=None, 
+#                                 perturbation=None, 
+#                                 callback=autospsa_callback).optimize(num_vars=trotter_init_params.size, 
+#                                                                      objective_function=loss_trotter, 
+#                                                                      initial_point=trotter_init_params)
+        
+        
+#         results["optimizer"].append("autospsa")
+#         results["final_params"].append(results_autospsa[0])
+#         results["final_loss"].append(results_autospsa[1])
+        
+#         stop = time.time()
+#         duration = time.strftime("%H:%M:%S", time.gmtime(stop-start))
+#         print(f"\nTotal time of optimization: {duration}")
+    
+#     # ==================================================
+#     # plot loss function evolution over optimization
+
+#     plot_loss(gd_loss, spsa_loss, autospsa_loss)
+    
+#     # ==================================================
+    
+#     df_results = pd.DataFrame(results).sort_values("final_loss")
+    
+#     print("\nOptimization results:\n")
+#     display(df_results)
+    
+#     best_params = df_results.iloc[0]["final_params"]
+#     best_opt = df_results.iloc[0]["optimizer"]
+    
+#     # ==================================================
+#     # plot parameters evolution, only for the best params
+    
+#     if best_opt == "gd":
+#         best_evol = gd_params
+#     elif best_opt == "spsa":
+#         best_evol = spsa_params
+#     elif best_opt == "autospsa":
+#         best_evol = autospsa_params
+        
+#     plot_param_evolution(params=best_evol, opt_name=best_opt)
+    
+#     # ==================================================
+    
+#     # guarantee that parameters sum to target_time
+#     best_params_target_time = best_params*(target_time/best_params.sum())
+    
+#     # sum to 1 (proportions)
+#     best_params_props = best_params/best_params.sum()
+    
+#     print(f"\nBest parameters:\t\t\t{best_params}")
+#     print(f"Best parameters (sum to {target_time:.2f}):\t\t{best_params_target_time}")
+#     print(f"Best parameters (sum to 1):\t\t{best_params_props}")
+    
+#     # ==================================================
+    
+#     params_dict = {param: time for param, time in zip(qc.parameters, best_params_target_time)}
+                                     
+#     qc = qc.bind_parameters(params_dict)
+    
+#     # ==================================================
+    
+#     return qc, best_params, best_params_target_time
+
 #################################################################
 # ============================================================= #
 #################################################################
