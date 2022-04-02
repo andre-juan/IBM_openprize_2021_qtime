@@ -28,6 +28,8 @@ from qiskit.algorithms.optimizers import GradientDescent, SPSA, SciPyOptimizer
 import qiskit
 qiskit.utils.algorithm_globals.random_seed = 42
 
+import itertools
+
 #################################################################
 # ============================================================= #
 #################################################################
@@ -460,13 +462,15 @@ def simulate_H_all_t(order, trotter_steps, backend,
 # ============================================================= #
 #################################################################
 
-def plot_simulation_H_all_t(ts, probs, fidelity_pi, plot_theoretical=True):
+def plot_simulation_H_all_t(ts, probs, fidelity_pi, order, trotter_steps, plot_theoretical=True):
       
+    fig = plt.figure(figsize=(10, 7))
+    
     plt.plot(ts, probs, label="simulated")
     
     plt.xlabel('time')
     plt.ylabel(r'Prob. of state $|110\rangle$')
-    plt.title(r'Evolution of $|110\rangle$ under $H_{Heis3}(t)$')
+    plt.title(r'Evolution of $|110\rangle$ under $H_{Heis3}(t)$' + f' - order {order}, {trotter_steps} steps')
     plt.grid()
 
     plt.axhline(y=fidelity_pi, color="red", ls=":", label=f"F($\pi)={fidelity_pi}$")
@@ -498,6 +502,8 @@ def plot_simulation_H_all_t(ts, probs, fidelity_pi, plot_theoretical=True):
         plt.plot(ts, probs_theoretical, label="theoretical")
 
     plt.legend(prop={'size': 12}, loc='center left', bbox_to_anchor=(1, 0.5))
+      
+    fig.savefig(f"figs/full_evolution_order_{order}_{trotter_steps}_steps.png", bbox_inches = "tight")
     
     plt.show()
     
@@ -777,7 +783,7 @@ def optimize_params_constrained(qc, backend, target_time=np.pi,
 #################################################################
 
 def optimize_params_and_run(order, trotter_steps, uniform_times, params_bounds_min, 
-                            backend_opt, backend_state_tomo, quadratic_loss):
+                            backend_opt, backend_state_tomo, quadratic_loss=False):
     
     qc = full_trotter_circ_no_bind(order, trotter_steps, uniform_times)
 
@@ -826,4 +832,6 @@ def optimize_params_and_run(order, trotter_steps, uniform_times, params_bounds_m
     ts, probs, fidelity_pi = simulate_H_all_t(order, trotter_steps, backend_opt,
                                               uniform_times=uniform_times, steps_times=best_params)
     
-    plot_simulation_H_all_t(ts, probs, fidelity_pi)
+    plot_simulation_H_all_t(ts, probs, fidelity_pi, order, trotter_steps, plot_theoretical=True)
+    
+    return fids, fidelity_pi, best_params
