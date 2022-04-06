@@ -1,5 +1,8 @@
 import numpy as np
 import pandas as pd
+
+import datetime as dt
+
 import matplotlib.pyplot as plt
 plt.rcParams.update({'font.size': 16})  # enlarge matplotlib fonts
 
@@ -29,6 +32,9 @@ import qiskit
 qiskit.utils.algorithm_globals.random_seed = 42
 
 import itertools
+
+from os import listdir
+from os.path import isfile, join
 
 #################################################################
 # ============================================================= #
@@ -835,3 +841,53 @@ def optimize_params_and_run(order, trotter_steps, uniform_times, params_bounds_m
     plot_simulation_H_all_t(ts, probs, fidelity_pi, order, trotter_steps, plot_theoretical=True)
     
     return fids, fidelity_pi, best_params
+
+
+#################################################################
+# ============================================================= #
+#################################################################
+
+def send_jobs(results_df, backend_state_tomo, uniform_times=False):
+    
+    jobs_dict = {}
+
+    for i in range(results_df.shape[0]):
+
+        order, n_steps, best_params, t_min = results_df.loc[i, "order n_steps best_params t_min".split()]
+
+        # ==================================================
+        # Trotterized Time Evolution with opt params
+
+        st_qcs = state_tomagraphy_circs(order=order, trotter_steps=n_steps,
+                                        uniform_times=uniform_times, steps_times=best_params)
+
+        # ==================================================
+        # Execution
+
+        jobs = execute_st_simulator(st_qcs, backend=backend_state_tomo)
+
+        # ==================================================
+        # getting jobs
+
+        jobs_dict[f"order_{order}_{n_steps}_steps_tmin_{t_min}"] = jobs
+        
+    return jobs_dict
+
+#################################################################
+# ============================================================= #
+#################################################################
+
+def hardware_exec_final_analysis(jobs_dict):
+
+    fids_dict = {}
+    
+    for key, jobs in jobs_dict.items():
+        
+        # ==================================================
+        # Results Analysis
+
+        fids = final_fidelities(jobs, st_qcs, order, trotter_steps)
+        
+        fids_dict[key] = fids
+    
+    return fids_dict
