@@ -891,3 +891,23 @@ def hardware_exec_final_analysis(jobs_dict):
         fids_dict[key] = fids
     
     return fids_dict
+
+#################################################################
+# ============================================================= #
+#################################################################
+
+def final_fidelities_retrieved(jobs):
+    
+    # Compute tomography fidelities for each repetition
+    fids = []
+    
+    for job in jobs:
+        
+        st_qcs = job.circuits()
+        
+        fid = state_tomo(job.result(), st_qcs)
+        
+        fids.append(fid)
+        
+    print(f"\nFinal results for jobs above\n")
+    print('State tomography fidelity = {:.4f} \u00B1 {:.4f}'.format(np.mean(fids), np.std(fids)))
