@@ -36,6 +36,8 @@ import itertools
 from os import listdir
 from os.path import isfile, join
 
+import pickle
+
 #################################################################
 # ============================================================= #
 #################################################################
@@ -911,3 +913,5 @@ def final_fidelities_retrieved(jobs):
         
     print(f"\nFinal results for jobs above\n")
     print('State tomography fidelity = {:.4f} \u00B1 {:.4f}'.format(np.mean(fids), np.std(fids)))
+    
+    return fids, np.mean(fids), np.std(fids)
