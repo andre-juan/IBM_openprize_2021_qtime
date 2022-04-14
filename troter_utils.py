@@ -914,4 +914,7 @@ def final_fidelities_retrieved(jobs):
     print(f"\nFinal results for jobs above\n")
     print('State tomography fidelity = {:.4f} \u00B1 {:.4f}'.format(np.mean(fids), np.std(fids)))
     
+    print("\nDistribution of state tomo fidelities:")
+    display(pd.Series(fids, name="fids").describe())
+    
     return fids, np.mean(fids), np.std(fids)
