@@ -60,6 +60,9 @@ def show_figure(fig):
 #################################################################
 
 def show_decompose(qc, n, show_original=False):
+    '''
+    auxiliar function to show different levels of circuit decomposition
+    '''
     
     if n <= 0 or show_original:
         
@@ -80,6 +83,9 @@ def show_decompose(qc, n, show_original=False):
 from qiskit.compiler import transpile
 
 def transpile_jakarta(qc, sim_noisy_jakarta, show_fig=False):
+    '''
+    function to transpile given quantum circuit using the jakarta backend
+    '''
 
     for opt_level in range(4):
 
@@ -105,7 +111,8 @@ def transpile_jakarta(qc, sim_noisy_jakarta, show_fig=False):
 
 def XX(parameter):
     '''
-    parameter: Parameter object
+    decomposition of XX gate
+    - parameter: Parameter object
     '''
 
     # Build a subcircuit for XX(t) two-qubit gate
@@ -128,7 +135,8 @@ def XX(parameter):
 
 def YY(parameter):
     '''
-    parameter: Parameter object
+    decomposition of YY gate
+    - parameter: Parameter object
     '''
     
     # Build a subcircuit for YY(t) two-qubit gate
@@ -151,7 +159,8 @@ def YY(parameter):
 
 def ZZ(parameter):
     '''
-    parameter: Parameter object
+    decomposition of ZZ gate
+    - parameter: Parameter object
     '''
 
     # Build a subcircuit for ZZ(t) two-qubit gate
@@ -173,7 +182,8 @@ def ZZ(parameter):
 
 def trotter_first_order(parameter):
     '''
-    parameter: Parameter object
+    single trotter step, first order
+    - parameter: Parameter object
     '''
     
     num_qubits = 3
@@ -197,7 +207,8 @@ def trotter_first_order(parameter):
 
 def trotter_second_order(parameter):
     '''
-    parameter: Parameter object
+    single trotter step, second order
+    - parameter: Parameter object
     '''
     
     num_qubits = 3
@@ -230,7 +241,9 @@ def trotter_second_order(parameter):
 
 def trotter_step(order, parameter):
     '''
-    parameter: Parameter object
+    wrapper function for a single trotter step
+    - order: int, desired order, must be 1 or 2
+    - parameter: Parameter object
     '''
     
     if order == 1:
@@ -253,7 +266,9 @@ def trotter_step(order, parameter):
 
 def view_single_trotter_step(order, parameter):
     '''
-    parameter: Parameter object
+    draws circuit for a single trotter step of specified order (1 or 2)
+    - order: int, desired order, must be 1 or 2
+    - parameter: Parameter object
     '''
     
     num_qubits = 3
@@ -272,12 +287,16 @@ def view_single_trotter_step(order, parameter):
 def full_trotter_circ(order, trotter_steps=4, target_time=np.pi,
                       uniform_times=True, steps_times=None):
     '''
+    construct the full trotterization circuit
+    
     args:
     - order: 1 or 2 for first or second order;
     - trotter_steps: number of steps, must be >=4;
     - target_time: final evolution must be t=pi, but added asa parameter, so we can simulate other times;
     - uniform: boolean indicating wheter or not uniform times will be used;
     - steps_times: list with times for each step, in order. length must be trotter_steps!
+    
+    returns quantum register and quantum circuit
     '''
 
     # Initialize quantum circuit for 3 qubits
@@ -332,6 +351,7 @@ def full_trotter_circ(order, trotter_steps=4, target_time=np.pi,
 def state_tomagraphy_circs(order, trotter_steps=4, target_time=np.pi,
                            uniform_times=True, steps_times=None):
     '''
+    build and returns circuits for state tomography
     trotter_steps: number of steps, must be >=4
     order: 1 or 2 for first or second order
     '''
@@ -350,6 +370,7 @@ def state_tomagraphy_circs(order, trotter_steps=4, target_time=np.pi,
 
 def execute_st_simulator(st_qcs, backend, id_str):
     '''
+    execute state tomography jobs
     backend: preferably sim_noisy_jakarta or sim_no_noise
     '''
     
@@ -371,8 +392,11 @@ def execute_st_simulator(st_qcs, backend, id_str):
 # ============================================================= #
 #################################################################
 
-# Compute the state tomography based on the st_qcs quantum circuits and the results from those ciricuits
+
 def state_tomo(result, st_qcs):
+    '''
+    Computes the state tomography based on the st_qcs quantum circuits and the results from those ciricuits
+    '''
     
     # The expected final state; necessary to determine state tomography fidelity
     target_state = (One^One^Zero).to_matrix()  # DO NOT MODIFY (|q_5,q_3,q_1> = |110>)
@@ -392,6 +416,9 @@ def state_tomo(result, st_qcs):
 #################################################################
 
 def final_fidelities(jobs, st_qcs, order, trotter_steps):
+    '''
+    return list of fidelities, for each job
+    '''
     
     # Compute tomography fidelities for each repetition
     fids = []
@@ -429,6 +456,11 @@ def simulate_full_circ(qc, backend):
 
 def simulate_H_all_t(order, trotter_steps, backend,
                      uniform_times=True, steps_times=None):
+    '''
+    this function simulates the full trotter evolution (t from 0 to pi)
+    it calculates the fidelity at every point in the interval
+    (see meaning of args in the definition of the full_trotter_circ() function)
+    '''
     
     print()
     print("#"*80)
@@ -474,6 +506,10 @@ def simulate_H_all_t(order, trotter_steps, backend,
 #################################################################
 
 def plot_simulation_H_all_t(ts, probs, fidelity_pi, order, trotter_steps, plot_theoretical=True):
+    '''
+    this plots the theoretical and simulated hamiltonian evolution,
+    via the fidelity of the target state as a function of time, from 0 to pi
+    '''
       
     fig = plt.figure(figsize=(10, 7))
     
@@ -562,6 +598,9 @@ def full_trotter_circ_no_bind(order, trotter_steps=4, uniform_times=True):
 #################################################################
 
 def plot_loss(losses_dict, quadratic_loss):
+    '''
+    this plots the evolution of the loss function per iterations
+    '''
     
     plt.figure(figsize=(12, 6))
     
@@ -589,6 +628,7 @@ def plot_loss(losses_dict, quadratic_loss):
 
 def plot_param_evolution(params, opt_name):
     '''
+    plot evolution of parameters values over the optimization steps
     params: list of params at each step, only for the best opt
     opt_name: name of the best opt
     '''
@@ -620,8 +660,13 @@ def optimize_params_constrained(qc, backend, target_time=np.pi,
                                 params_bounds_min=0,
                                 quadratic_loss=False):
     '''
+    this function performs the classical optimization of the variational circuit.
+    it employs the SLSQP constrained optimization method 
+    (given the constraints on the total evolution time and allowed valus for parameters which are trotter steps times)
+    please see comments throughout the function to understand its inner workings
     - eps (float): single epsilon, or list of epsilons (step size used for numerical approximation of the Jacobian)
     - params_bounds_min: inferior bound of parameters
+    - quadratic_loss: binary flag, wheter or not to use a quadratic loss
     '''
     
     # ==================================================
@@ -795,6 +840,10 @@ def optimize_params_constrained(qc, backend, target_time=np.pi,
 
 def optimize_params_and_run(order, trotter_steps, uniform_times, params_bounds_min, 
                             backend_opt, backend_state_tomo, quadratic_loss=False):
+    '''
+    this function builds the full variational circuit optimization pipeline, by calling
+    previously defined functions. Please see their definitions for details.
+    '''
     
     qc = full_trotter_circ_no_bind(order, trotter_steps, uniform_times)
 
@@ -853,6 +902,9 @@ def optimize_params_and_run(order, trotter_steps, uniform_times, params_bounds_m
 #################################################################
 
 def send_jobs(results_df, backend_state_tomo, uniform_times=False):
+    '''
+    this function sends jobs for execution. It's very important for hardware execution!
+    '''
     
     jobs_dict = {}
 
@@ -885,6 +937,9 @@ def send_jobs(results_df, backend_state_tomo, uniform_times=False):
 #################################################################
 
 def hardware_exec_final_analysis(jobs_dict):
+    '''
+    returns a dict with the fidelities. 
+    '''
 
     fids_dict = {}
     
@@ -910,6 +965,10 @@ def hardware_exec_final_analysis(jobs_dict):
 #################################################################
 
 def final_fidelities_retrieved(jobs, print_all_details=True):
+    '''
+    return the jobs' fidelities (8 for each), their mean and std.
+    also prints their distribution (optionally via the flag print_all_details)
+    '''
     
     # Compute tomography fidelities for each repetition
     fids = []
@@ -1004,11 +1063,12 @@ def retrieve_job_ids_from_file(file, jakarta, print_all_details=True):
 # ============================================================= #
 #################################################################
 
-def merge_simulator_and_hardware_results(file, df_results_hardware):
-
+def merge_simulator_and_hardware_results(file, df_results_hardware, save_here=False):
     '''
     merges hardware results (second argument) and simulation results (read from file)
     - file: string with the name of pickle file to be read (same input of function retrieve_job_ids_from_file())
+    - save_here: binary flag. Must be True if final results are to be saved in the same directory
+        - in the main notebook, save_gere=True is to be used!
     '''
     
     # getting the kind of experiment and its date
@@ -1040,8 +1100,12 @@ def merge_simulator_and_hardware_results(file, df_results_hardware):
                                                                    how="outer")
                                                              .sort_values("mean_fid_hardware",
                                                                           ascending=False))
-
-    final_results.to_parquet(f'./results/final_results_{experiment_date_label}.parquet')
+    
+    # save in same directory (used in the main notebook)
+    if save_here:
+        final_results.to_parquet(f'./final_results_{experiment_date_label}.parquet')
+    else:
+        final_results.to_parquet(f'./results/final_results_{experiment_date_label}.parquet')
     
     return final_results
 
@@ -1049,17 +1113,19 @@ def merge_simulator_and_hardware_results(file, df_results_hardware):
 # ============================================================= #
 #################################################################
 
-def final_results_analysis(file, jakarta, print_all_details):
+def final_results_analysis(file, jakarta, print_all_details, save_here=False):
     '''
     this calls the functions retrieve_job_ids_from_file() and merge_simulator_and_hardware_results()
     - file: string with the name of pickle file to be read
     - jakarta: IBMQBackend object (fixed as jakarta for this project)
     - print_all_details: binary flag which controls whether or not information about the jobs is printed
+    - save_here: binary flag. Must be True if final results are to be saved in the same directory
+        - in the main notebook, save_gere=True is to be used!
     '''
     
     df_results_hardware = retrieve_job_ids_from_file(file, jakarta, print_all_details)
     
-    final_results = merge_simulator_and_hardware_results(file, df_results_hardware)
+    final_results = merge_simulator_and_hardware_results(file, df_results_hardware, save_here)
     
     print(f"\nFinal results (comparing simulation and hardware execution):\n")
     display(final_results[['order', 'n_steps', 't_min', 
