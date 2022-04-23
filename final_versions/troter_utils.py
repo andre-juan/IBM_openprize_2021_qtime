@@ -360,7 +360,7 @@ def execute_st_simulator(st_qcs, backend, id_str):
     print()
     for i in range(reps):
         # execute
-        job = execute(st_qcs, backend, shots=shots, qobj_header=id_str+f"run_{i+1}")
+        job = execute(st_qcs, backend, shots=shots, qobj_id=f"{id_str}_run_{i+1}")
         print(f'{i+1}/{reps} - Job ID', job.job_id())
         jobs.append(job)
         
@@ -1065,3 +1065,24 @@ def final_results_analysis(file, jakarta, print_all_details):
     display(final_results[['order', 'n_steps', 't_min', 
                            'mean_fid_simulator', 'std_fid_simulator',
                            'mean_fid_hardware', 'std_fid_hardware']])
+
+#################################################################
+# ============================================================= #
+#################################################################
+
+def final_df_results(final_results):
+    
+    df_final = pd.concat([pd.read_parquet(f"./results/{file}") for file in final_results]).sort_values("mean_fid_hardware",
+                                                                                                        ascending=False)
+    df_final['max_fid_hardware'] = df_final['state_tomo_fids_hardware'].apply(lambda x: x.max())
+    df_final['max_fid_simulator'] = df_final['state_tomo_fids_simulator'].apply(lambda x: x.max())
+
+    cols_order = ['order', 'n_steps', 't_min', 'fid_pi', 'best_params',
+                  'state_tomo_fids_simulator', 'mean_fid_simulator', 'std_fid_simulator', 'max_fid_simulator',
+                  'state_tomo_fids_hardware', 'mean_fid_hardware', 'std_fid_hardware', 'max_fid_hardware']
+
+    df_final = df_final[cols_order].copy()
+
+    df_final.to_parquet(f'./results/final_results_all_experiments.parquet')
+
+    return df_final
