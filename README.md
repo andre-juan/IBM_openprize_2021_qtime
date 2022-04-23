@@ -51,6 +51,11 @@ ______________
 
 In the folder `initial_versions` you can find several notebook (.ipynb) and script (.py) Python files. These represent our first ideas and attempts in the direction of the solution. Some of these attempts are referenced in the solution description pdf, which is why we opted to include them here. That said, these files were not thoroughly documented, and the code therein should not be used for final evaluation of the solution.
 
+## Highlights
+
+Best fidelity with a single run:          0.6107
+Best mean fidelity out of $8$ executions: 0.4459 ± 0.0995
+
 ______________
 
 Members of the team QTime:
