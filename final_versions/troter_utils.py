@@ -8,6 +8,8 @@ from IPython.display import Image, display
 
 plt.rcParams.update({'font.size': 16})  # enlarge matplotlib fonts
 
+import seaborn as sns
+
 # Import qubit states Zero (|0>) and One (|1>), and Pauli operators (X, Y, Z)
 from qiskit.opflow import Zero, One, I, X, Y, Z
 
@@ -16,7 +18,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # Importing standard Qiskit modules
-from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister, IBMQ, execute, transpile
+from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister, IBMQ, execute, transpile, Aer
 from qiskit.providers.aer import QasmSimulator
 from qiskit.tools.monitor import job_monitor
 from qiskit.circuit import Parameter
@@ -301,7 +303,7 @@ def full_trotter_circ(order, trotter_steps=4, target_time=np.pi,
     returns quantum register and quantum circuit
     '''
 
-    # Initialize quantum circuit for 3 qubits
+    # Initialize quantum circuit for 7 qubits
     qr = QuantumRegister(7)
     qc = QuantumCircuit(qr)
 
@@ -1155,3 +1157,168 @@ def final_df_results(final_results):
     df_final.to_parquet(f'./results/final_results_all_experiments.parquet')
 
     return df_final
+
+#################################################################
+# ============================================================= #
+#################################################################
+
+def generate_fidelity_graphs(df_final, backend_opt):
+    '''
+    this functions shows the full dynamics fidelity plots for all the experiments, from best to worse
+    graphs are generated and saved if not existent.
+    '''
+
+    for i in range(df_final.shape[0]):
+
+        order, trotter_steps, best_params, params_bounds_min = df_final.iloc[i][['order', 'n_steps', 'best_params', "t_min"]]
+
+        t_min_str = params_bounds_min if params_bounds_min > 0 else "neg"
+        pic_path = f"figs/full_evolution_order_{order}_{trotter_steps}_steps_tmin_{t_min_str}.png"
+
+        print("="*80)
+        print(f"Order {order}; {trotter_steps} steps; t_min = {t_min_str}".center(80))
+        print("="*80)
+
+        try:
+
+            display(Image(filename=pic_path))
+
+        except:
+
+            ts, probs, fidelity_pi = simulate_H_all_t(order, trotter_steps, sim_noisy_jakarta,
+                                                      uniform_times=False, steps_times=best_params)
+
+            plot_simulation_H_all_t(ts, probs, fidelity_pi, order, trotter_steps, params_bounds_min, plot_theoretical=True)
+            
+#################################################################
+# ============================================================= #
+#################################################################
+
+def full_trotter_gates(order, trotter_steps=4, target_time=np.pi,
+                       uniform_times=True, steps_times=None, draw_circ=False):
+    '''
+    this funtion returns a 3-qubit circuit with the gates implementing
+    the specificed trotterization. This is used to inspect wheter or not
+    the corresponding unitary differs from the identity, in the check_circuit_unitary() function
+    '''
+    
+    qr = QuantumRegister(3)
+    qc = QuantumCircuit(qr)
+    
+    if uniform_times:
+
+        Trot_gate = trotter_step(order, Parameter('t'))
+
+        for _ in range(trotter_steps):
+
+            qc.append(Trot_gate, [qr[0], qr[1], qr[2]])
+            
+        qc = qc.bind_parameters({qc.parameters[0]: target_time/trotter_steps})
+    
+    else:
+        
+        # check
+        if len(steps_times) != trotter_steps:
+            raise ValueError(f"Incorrect quantity of times {len(steps_times)}! Must be equal to number of steps {trotter_steps}")
+                             
+        for i in range(trotter_steps):
+            
+            Trot_gate = trotter_step(order, Parameter(f't{i}'))
+                                     
+            qc.append(Trot_gate, [qr[0], qr[1], qr[2]])
+                                     
+        params_dict = {param: time for param, time in zip(qc.parameters, steps_times)}
+                                     
+        qc = qc.bind_parameters(params_dict)
+        
+    if draw_circ:
+        show_figure(qc.draw("mpl"))
+         
+    return qc
+
+#################################################################
+# ============================================================= #
+#################################################################
+
+def check_circuit_unitary(df_final, plot_matrix=True, draw_circuit=True):
+    '''
+    checks wheter or not the trotterization unitary is significantly different from the identity
+    updates the final results table with this info.
+    '''
+    
+    id_matrix = np.eye(8)
+
+    dif_id_norm = []
+    is_id = []
+
+    for i in range(df_final.shape[0]):
+
+        order, trotter_steps, best_params, params_bounds_min = df_final.iloc[i][['order', 'n_steps', 'best_params', "t_min"]]
+
+        t_min_str = params_bounds_min if params_bounds_min > 0 else "neg"
+
+        print("="*80)
+        print(f"Order {order}; {trotter_steps} steps; t_min = {t_min_str}".center(80))
+        print("="*80)
+
+        # construct circuit - this has only the gates in the proposed trotterization
+        qc = full_trotter_gates(order=order, trotter_steps=trotter_steps, target_time=np.pi,
+                                uniform_times=False, steps_times=best_params, draw_circ=draw_circuit)
+
+        # ===================================
+        # simulate and plot the circuit unitary
+
+        backend = Aer.get_backend("unitary_simulator")
+        circuit_unitary_matrix = execute(qc, backend).result().get_unitary()
+
+        if plot_matrix:
+            print("\nCircuit unitary:\n")
+
+            fig, ax = plt.subplots(1, 2, figsize=(15, 6))
+
+            sns.heatmap(np.real(circuit_unitary_matrix), annot=True, ax=ax[0], annot_kws={"size": 8})
+            ax[0].set_title("Real part")
+
+            sns.heatmap(np.imag(circuit_unitary_matrix), annot=True, ax=ax[1], annot_kws={"size": 8})
+            ax[1].set_title("Imaginary part")
+
+            plt.tight_layout()
+            plt.show()
+
+        # ===================================
+        # compare unitary with identity
+
+        # frobenius norm of the difference, ||U - Id||_F
+        diff_norm = np.linalg.norm(circuit_unitary_matrix-id_matrix, ord="fro") 
+        cutoff = 1e-4
+
+        dif_id_norm.append(diff_norm)
+
+        print(f"\n||U - Id||_F = {diff_norm:.2e}")
+
+        if diff_norm > cutoff:
+            print(f"\nThis is above the cutoff {cutoff:.2e}, so the unitary significantly differs from the identity!")
+            is_id.append(False)
+        else:
+            print(f"\nThis is below the cutoff {cutoff:.2e}, so the unitary does not significantly differ from the identity!")
+            print(f"\nThis means that, effectively, the trotterization quantum circuit is not quite doing much.")
+            is_id.append(True)
+
+        print()
+
+    df_final["dif_id_norm"] = dif_id_norm
+    df_final["is_id"] = is_id
+    
+    # savin again, now with two added columns above
+    df_final.to_parquet(f'./results/final_results_all_experiments.parquet')
+    
+    return df_final
+
+#################################################################
+# ============================================================= #
+#################################################################
+
+
+#################################################################
+# ============================================================= #
+#################################################################
