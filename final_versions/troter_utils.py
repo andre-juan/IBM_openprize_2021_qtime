@@ -4,6 +4,8 @@ import pandas as pd
 import datetime as dt
 
 import matplotlib.pyplot as plt
+from IPython.display import Image, display
+
 plt.rcParams.update({'font.size': 16})  # enlarge matplotlib fonts
 
 # Import qubit states Zero (|0>) and One (|1>), and Pauli operators (X, Y, Z)
@@ -505,7 +507,7 @@ def simulate_H_all_t(order, trotter_steps, backend,
 # ============================================================= #
 #################################################################
 
-def plot_simulation_H_all_t(ts, probs, fidelity_pi, order, trotter_steps, plot_theoretical=True):
+def plot_simulation_H_all_t(ts, probs, fidelity_pi, order, trotter_steps, params_bounds_min, plot_theoretical=True):
     '''
     this plots the theoretical and simulated hamiltonian evolution,
     via the fidelity of the target state as a function of time, from 0 to pi
@@ -550,7 +552,8 @@ def plot_simulation_H_all_t(ts, probs, fidelity_pi, order, trotter_steps, plot_t
 
     plt.legend(prop={'size': 12}, loc='center left', bbox_to_anchor=(1, 0.5))
       
-    fig.savefig(f"figs/full_evolution_order_{order}_{trotter_steps}_steps.png", bbox_inches = "tight")
+    t_min_str = params_bounds_min if params_bounds_min > 0 else "neg"
+    fig.savefig(f"figs/full_evolution_order_{order}_{trotter_steps}_steps_tmin_{t_min_str}.png", bbox_inches = "tight")
     
     plt.show()
     
@@ -892,7 +895,7 @@ def optimize_params_and_run(order, trotter_steps, uniform_times, params_bounds_m
     ts, probs, fidelity_pi = simulate_H_all_t(order, trotter_steps, backend_opt,
                                               uniform_times=uniform_times, steps_times=best_params)
     
-    plot_simulation_H_all_t(ts, probs, fidelity_pi, order, trotter_steps, plot_theoretical=True)
+    plot_simulation_H_all_t(ts, probs, fidelity_pi, order, trotter_steps, params_bounds_min, plot_theoretical=True)
     
     return fids, fidelity_pi, best_params
 
