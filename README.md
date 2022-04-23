@@ -54,6 +54,7 @@ In the folder `initial_versions` you can find several notebook (.ipynb) and scri
 ## Highlights
 
 Best fidelity with a single run:          0.6107
+
 Best mean fidelity out of $8$ executions: 0.4459 ± 0.0995
 
 ______________
