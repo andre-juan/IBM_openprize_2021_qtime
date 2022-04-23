@@ -55,8 +55,12 @@ ______________
 
 Members of the team QTime:
 
-André Juan Ferreira Martins
-Anton Simen Albino
-Askery Canabarro
-Rafael Chaves
-Rodrigo Pereira
+- André Juan Ferreira Martins
+
+- Anton Simen Albino
+
+- Askery Canabarro
+
+- Rafael Chaves
+
+- Rodrigo Pereira
