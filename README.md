@@ -1,6 +1,6 @@
 # IBM Quantum Awards: Open Science Prize 2021/2022 - QTime solution
 
-In this repository we present our solution for the IBM Quantum Awards: Open Science Prize 2021.
+In this repository, we present our solution for the IBM Quantum Awards: Open Science Prize 2021.
 
 ```
 .
